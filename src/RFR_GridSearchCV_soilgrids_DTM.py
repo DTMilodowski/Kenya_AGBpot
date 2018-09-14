@@ -1,4 +1,10 @@
 '''
+14/09/2018 datum
+Notes: Input arguements for running on command line:
+arg[1]: [mean,upper,lower] ... the target layer for the analysis
+arg[2]: [new,load] ... new project or existing (i.e. do we need to calibrate new RFR model?)
+arg[3]: [savenc] ... whether to save the netcdf file for output
+
 10/09/2018 - JFE
 changed input map to be version 3.1 and adjusted land use codes from ESA-CCI to
 include 90 as forest cover
@@ -107,7 +113,7 @@ def plot_OLS(ax,target,Y,mode='unicolor'):
 
     ax.text(0.98,0.02,'y = %4.2fx + %4.2f\nR$^2$ = %4.2f; p < 0.001\nrmse = %4.1f Mg ha$^{-1}$ ; NSE = %4.2f' % (results.params[1],results.params[0],results.rsquared,rmse,nse),va='bottom',ha='right',transform=ax.transAxes)
 
-path = '/disk/scratch/local.2/jexbraya/kenya_ODA/processed/'
+path = '/disk/scratch/local.2/Kenya_AGBpot_data/processed'
 
 #get Kenya mask
 kenya = gdal.Open(path+'/Kenya_AGB2015_v31_30s.tif').ReadAsArray()!=65535 # JFE replaced source file 10/09/2018
