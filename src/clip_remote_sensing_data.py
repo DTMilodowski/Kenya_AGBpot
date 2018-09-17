@@ -13,7 +13,7 @@ regrid data sets
 
 - the regridding routines utilise the following packages:
   - GDAL
-  - NCO
+  This is run from the command line, rather than with the python bindings
 
 14/09/2018
 David T. Milodowski
@@ -56,48 +56,30 @@ for ff,fname in enumerate(wc2files):
         wc2subset.append(fname)
         os.system("gdalwarp -overwrite -te %f %f %f %f %s %s%s/wc2/%s_%s.tif" % (W,S,E,N,wc2files[ff],outdir,prefix,outfname,prefix))
 
+# Soilgrids next. Soilgrids are downloaded as geotiffs. Resolution is identical to worldclim, so regridding process is the same
+sgdir = '/disk/scratch/local.2/soilgrids/1km/'
+sgfiles = glob.glob('%s*_1km_ll.tif' % sgdir);sgfiles.sort()
+sgsubset = []
+sgvars = []
+for ff,fname in enumerate(sgfiles):
+    variable = fname.split('/')[-1][:-11]
+    outfname = fname.split('/')[-1][:-4]
+    sgvars.append(variable)
+    sgsubset.append(fname)
+    os.system("gdalwarp -overwrite -te %f %f %f %f %s %s%s/soilgrids/%s_%s.tif" % (W,S,E,N,sgfiles[ff],outdir,prefix,outfname,prefix))
 
-"""
-# ERA Interim
-era_vars = ['prcp','t2m','u10w','v10w','d2m']
-era_path = '/disk/scratch/local.2/dmilodow/ERAinterim/source_files/0.25deg_Mexico/'
-era_savepath = '/exports/csce/datastore/geos/users/dmilodow/FOREST2020/hazardsINLAndscapes/fireINLAndscapes/data/external/jalisco/era_interim/'
+# Aboveground Biomass - Avitabile map - 1 km resolution so same gdal example should be sufficient
+agbfiles= ['/home/dmilodow/DataStore_GCEL/AGB/avitabile/Avitabile_AGB_Map/Avitabile_AGB_Map.tif','/home/dmilodow/DataStore_GCEL/AGB/avitabile/Avitabile_AGB_Uncertainty/Avitabile_AGB_Uncertainty.tif']
+agbvars = ['Avitabile_AGB','Avitabile_AGB_Uncertainty']
+os.system("gdalwarp -overwrite -te %f %f %f %f %s %s%s/agb/%s_%s_1km.tif" % (W,S,E,N,agbfiles[0],outdir,prefix,agbvars[0],prefix))
+os.system("gdalwarp -overwrite -te %f %f %f %f %s %s%s/agb/%s_%s_1km.tif" % (W,S,E,N,agbfiles[1],outdir,prefix,agbvars[1],prefix))
 
-for yy in range(start_year,end_year+1):
-    for mm in range(1,13):
-        for vv in range(0,len(era_vars)):
-            src_file = '%s%s_%04i%02i.nc' % (era_path,era_vars[vv],yy,mm)
-            save_file = '%s%s_%04i%02i.nc' % (era_savepath,era_vars[vv],yy,mm)
-            os.system("ncks -O -d latitude,%f,%f -d longitude,%f,%f %s %s" % (S,N,W_,E_,src_file,save_file))
-
-# MODIS Burned Area
-modis_path = '/disk/scratch/local.2/MCD64A1.006/processed/'
-modis_savepath = '/exports/csce/datastore/geos/users/dmilodow/FOREST2020/hazardsINLAndscapes/fireINLAndscapes/data/external/jalisco/modis_mcd64a1/'
-for yy in range(start_year,end_year+1):
-    for mm in range(1,13):
-        src_file = '%s%04i.%02i.01_mex.nc' % (modis_path,yy,mm)
-        save_file= '%s%04i.%02i.01.nc' % (modis_savepath,yy,mm)
-        os.system("ncks -O -d lat,%f,%f -d lon,%f,%f %s %s" % (S,N,W,E,src_file,save_file))
-
-# Land cover
-lc_path = '/home/dmilodow/DataStore_GCEL/ESA_CCI_landcover/'
-lc_savepath = '/exports/csce/datastore/geos/users/dmilodow/FOREST2020/hazardsINLAndscapes/fireINLAndscapes/data/external/jalisco/esa_cci/'
-for yy in range(start_year,end_year+1):
-    src_file = '%sESACCI-LC-L4-LCCS-Map-300m-P1Y-%04i-v2.0.7.nc' % (lc_path,yy)
-    save_file= '%sESACCI-LC-L4-LCCS-Map-300m-P1Y-%04i-v2.0.7.nc' % (lc_savepath,yy)
-    os.system("ncks -O -d lat,%f,%f -d lon,%f,%f %s %s" % (S,N,W,E,src_file,save_file))
-
-# worldpop
-years = [2000,2005,2010,2015]
-pop_path = '/home/dmilodow/DataStore_GCEL/WorldPop/Population/'
-pop_savepath = '/exports/csce/datastore/geos/users/dmilodow/FOREST2020/hazardsINLAndscapes/fireINLAndscapes/data/external/jalisco/worldpop/'
-#'LAC_PPP_2015_adj_v2.tif'
-for yy in range(0,4):
-    os.system("gdalwarp -overwrite -te %f %f %f %f -r mode %sLAC_PPP_%04i_adj_v2.tif %sLAC_PPP_%04i_adj_v2.tif" % (W,S,E,N,pop_path,years[yy],pop_savepath,years[yy]))
-
-# topography
-srtm_path = '/disk/scratch/local.2/dmilodow/SRTM90m/Mexico/'
-srtm_savepath = '/exports/csce/datastore/geos/users/dmilodow/FOREST2020/hazardsINLAndscapes/fireINLAndscapes/data/external/jalisco/srtm/'
-os.system("gdalwarp -overwrite -te %f %f %f %f -r mode %smexico_srtm90.tif %smexico_srtm90.tif" % (W,S,E,N,srtm_path,srtm_savepath))
-
-"""
+# ESA CCI landcover - the original resolution of these rasters is higher than the reference data, so this needs to be regridded. The mode landcover class will be used.
+# Note that the ESA CCI landcover data are originally in netcdf format.
+lcdir = '/home/dmilodow/DataStore_GCEL/ESA_CCI_landcover/'
+lcfiles = glob.glob('%s*.nc' % lcdir);lcfiles.sort()
+for ff,fname in enumerate(lcfiles):
+    outfname = fname.split('/')[-1][:22]+fname.split('/')[-1][27:42]+"-1km-mode-lccs-class"
+    os.system("gdalwarp -overwrite -te %f %f %f %f -tr 0.008333333333333 -0.008333333333333 -r mode -of GTIFF NETCDF:%s:lccs_class %s%s/esacci/%s-%s.tif" % (W,S,E,N,lcfiles[ff],outdir,prefix,outfname,prefix))
+    outfname = fname.split('/')[-1][:22]+fname.split('/')[-1][27:42]+"-1km-mode-change-count"
+    os.system("gdalwarp -overwrite -te %f %f %f %f -tr 0.008333333333333 -0.008333333333333 -r mode -of GTIFF NETCDF:%s:change_count %s%s/esacci/%s-%s.tif" % (W,S,E,N,lcfiles[ff],outdir,prefix,outfname,prefix))
