@@ -33,6 +33,7 @@ import statsmodels.api as sm
 import pylab as pl
 import cartopy.crs as ccrs
 import cartopy.feature as cfeat
+import os
 import sys
 from scipy.stats import pearsonr
 from sklearn.model_selection import train_test_split, GridSearchCV
@@ -113,44 +114,56 @@ def plot_OLS(ax,target,Y,mode='unicolor'):
 
     ax.text(0.98,0.02,'y = %4.2fx + %4.2f\nR$^2$ = %4.2f; p < 0.001\nrmse = %4.1f Mg ha$^{-1}$ ; NSE = %4.2f' % (results.params[1],results.params[0],results.rsquared,rmse,nse),va='bottom',ha='right',transform=ax.transAxes)
 
-path = '/disk/scratch/local.2/Kenya_AGBpot_data/processed'
+country_code = 'INDO'
+path = '/disk/scratch/local.2/dmilodow/PotentialBiomass/processed/%s/' % country_code
+version_number = '001'
 
-#get Kenya mask
+calval_dir = '/home/dmilodow/DataStore_DTM/FOREST2020/PotentialBiomassV2/calval/'
+if 'v%s' % version_number in os.listdir('%s/' % calval_dir):
+    os.system('mkdir %s/v%s' % (calval_dir,version_number))
+
+alg_dir = '/home/dmilodow/DataStore_DTM/FOREST2020/PotentialBiomassV2/saved_algorithms/'
+output_dir = '/home/dmilodow/DataStore_DTM/FOREST2020/PotentialBiomassV2/output/'
+
+
+"""
+#get country mask
 kenya = gdal.Open(path+'/Kenya_AGB2015_v31_30s.tif').ReadAsArray()!=65535 # JFE replaced source file 10/09/2018
-#get the forest fraction within each 30s cell
-#fraction = gdal.Open(path+'Kenya_sleek_mask_forest_fraction_30s.tif').ReadAsArray()
-#fraction[fraction==65535] = -9999.
-#open file with agb and get GetGeoTransform
-agbfile = gdal.Open(path+'/Kenya_AGB2015_v31_30s.tif')
+"""
+
+agbfile = gdal.Open('%s/agb/Avitabile_AGB_%s_1km.tif' % (path,country_code))
 geo = agbfile.GetGeoTransform()
 agbdata = agbfile.ReadAsArray()
 
 lvl = sys.argv[1]
 
 if lvl in ['upper','lower']:
-    uc = gdal.Open(path+'/Kenya_RelSTD2015_v31_30s.tif').ReadAsArray()*0.01
+    uc = gdal.Open('%s/agb/Avitabile_AGB_Uncertainty_%s_1km.tif' % (path,country_code)).ReadAsArray()
     if lvl == 'upper':
         print('setting target as mean + uc')
-        agbdata = agbdata+uc*agbdata
+        agbdata = agbdata+uc
     elif lvl == 'lower':
         print('setting target as mean - uc')
-        agbdata = agbdata-uc*agbdata
+        agbdata = agbdata-uc
 elif lvl == 'mean':
     print('keep target')
 else:
     lvl = 'mean'
     print('no uncertainty level recognised, assuming mean')
-agbdata[agbdata==agbdata[0,0]] = 65535
+agbdata[agbdata<-3.39e38] = 65535
 
 #open landcover file and extract forest and bare for 1992 and 2015
-lcfile  = gdal.Open(path+'/ESACCI-LC-L4-LCCS-Map-1992-2015_30s.tif')
-lc1992  = lcfile.GetRasterBand(1).ReadAsArray()
+lc1992file  = gdal.Open('%s/esacci/ESACCI-LC-L4-LCCS-Map-P1Y-1992-v2.0.7-1km-mode-lccs-class-%s.tif' % (path,country_code))
+lc2015file  = gdal.Open('%s/esacci/ESACCI-LC-L4-LCCS-Map-P1Y-2015-v2.0.7-1km-mode-lccs-class-%s.tif' % (path,country_code))
+lc1992  = lc1992file.GetRasterBand(1).ReadAsArray()
 bare1992= (lc1992>=200)*(lc1992<=202)
 frst1992= (lc1992>=50)*(lc1992<=90) # included code 90: mixed tree as forest - JFE 10/09/18
-lc2015  = lcfile.GetRasterBand(24).ReadAsArray()
+lc2015  = lc2015file.GetRasterBand(1).ReadAsArray()
 bare2015= (lc2015>=200)*(lc2015<=202)
 frst2015= (lc2015>=50)*(lc2015<=90)
 
+"""
+# version incorporating country masks
 #final masks
 bare = bare1992*bare2015*kenya
 frst = frst1992*frst2015*kenya
@@ -159,8 +172,12 @@ print("forests in 1992: ", (frst1992*kenya).sum()/kenya.sum() )
 print("forests in 2015: ", (frst2015*kenya).sum()/kenya.sum() )
 print("forest from 1992 to 2015", (frst*kenya).sum()/kenya.sum() )
 
+"""
+bare = bare1992*bare2015
+frst = frst1992*frst2015
+
 #get  climate data mask
-wc2files = glob.glob(path+'/wc2_hist/wc2*tif');wc2files.sort()
+wc2files = glob.glob(path+'/wc2/wc2*tif');wc2files.sort()
 wc2subset = []
 wc2vars = []
 for ff,fname in enumerate(wc2files):
@@ -172,15 +189,15 @@ for ff,fname in enumerate(wc2files):
         if variable == '01':
             dummy = gdal.Open(fname).ReadAsArray()
             wc2mask = np.ones(dummy.shape,dtype='bool')
-            wc2mask[dummy < -1.69e308] = False
+            wc2mask[dummy < -1.69e38] = False
 
 #get soil data mask
-soilfiles = glob.glob(path+'/KEN_SOILGRIDS/*tif');soilfiles.sort()
+soilfiles = glob.glob(path+'/soilgrids/*tif');soilfiles.sort()
 #get variable names
 soilvars = [f.split('/')[-1].split('.')[0] for f in soilfiles]
 soilmask = gdal.Open(soilfiles[0]).ReadAsArray()!=-32768
 
-#defin coordinates
+#define coordinates
 y,x = wc2mask.shape
 lon = np.arange(x)*geo[1]+geo[0]+geo[1]/2.
 lat = np.arange(y)*geo[-1]+geo[3]+geo[-1]/2.
@@ -193,7 +210,7 @@ for la,latval in enumerate(lat):
 lon2d,lat2d = np.meshgrid(lon,lat)
 
 #set target
-target = np.zeros(kenya.shape)-9999.
+target = np.zeros(frst.shape)-9999.
 target[frst] = agbdata[frst]
 target[bare] = 0.
 target[target==65535] = -9999.
@@ -206,8 +223,12 @@ slc = ~target.mask * wc2mask * soilmask
 print('# of training pixels', slc.sum())
 
 # extract data for final prediction here, needed for PCA
-# selection is Kenya, wc2 mask excluding water bodies (code 210)
+# wc2 mask excluding water bodies (code 210)
+"""
+# using kenya mask
 slcpred = kenya*wc2mask*(lc2015!=210)*soilmask
+"""
+slcpred = wc2mask*(lc2015!=210)*soilmask
 
 predfiles = wc2subset+soilfiles
 predict = np.zeros([slcpred.sum(),len(predfiles)])
@@ -256,18 +277,18 @@ if sys.argv[2] == 'new':
     fig.axes[0].set_title('Calibration')
     fig.axes[1].set_title('Validation')
     #fig.show()
-    fig.savefig('calval/v31/calval_v31_%s_WC2_SOILGRIDS_GridSearch.png' % lvl,bbox_inches='tight')
+    fig.savefig('%s/v%s/calval_%s_v31_%s_WC2_SOILGRIDS_GridSearch.png' % (calval_dir,country_code,version_number,lvl),bbox_inches='tight')
 
     #now fit final forest on all dataset
     forest.fit(X,y)
 
     #save the fitted algorithm to avoid refitting everytime
-    joblib.dump(forest,path+'/../saved_algorithms/kenya_ODA_v31_AGBpot_%s_WC2_SOILGRIDS.pkl' % lvl,compress = 1)
+    joblib.dump(forest,'%s/%s_v%s_AGBpot_%s_WC2_SOILGRIDS.pkl' % (alg_dir,country_code,version_number,lvl),compress = 1)
 
 elif sys.argv[2] == 'load':
 
     print('Loading existing application')
-    forest = joblib.load(path+'/../saved_algorithms/kenya_ODA_v31_AGBpot_%s_WC2_SOILGRIDS.pkl' % lvl)
+    forest = joblib.load('%s/saved_algorithms/%s_v%s_AGBpot_%s_WC2_SOILGRIDS.pkl' % (alg_dir,country_code,version_number,lvl))
 
 print(forest.score(X,y),np.sqrt(mean_squared_error(y,forest.predict(X))))
 print("AGB in training data: %4.2f Pg" % ((target*areas).sum()*1e-13))
@@ -282,7 +303,7 @@ potmap[slc] = y
 potmap[~slcpred] = -9999.
 potmap = np.ma.masked_equal(potmap,-9999.)
 
-print("AGB in Pedro's map: %4.2f Pg C" % ((np.ma.masked_equal(agbdata,65535)*areas).sum()*1e-13*0.48))
+print("AGB in reference map: %4.2f Pg C" % ((np.ma.masked_equal(agbdata,65535)*areas).sum()*1e-13*0.48))
 print("Potential AGB     : %4.2f Pg C" % ((np.ma.masked_equal(potmap,-9999.)*areas).sum()*1e-13*0.48))
 
 figimp = pl.figure('imp');figimp.clf()
@@ -301,19 +322,19 @@ ax.set_xlabel('variable')
 ax.set_ylabel('variable importance')
 ax.set_ylim(0,ax.get_ylim()[1])
 #figimp.show()
-figimp.savefig('calval/v31/importances_v31_%s_WC2_SOILGRIDS_GridSearch.png' % lvl,bbox_inches='tight')
+figimp.savefig('%s/v%s/%s_importances_v%s_%s_WC2_SOILGRIDS_GridSearch.png' % (calval_dir,version_number,country_code,version_number,lvl),bbox_inches='tight')
 
 #save a netcdf file if needed
 if sys.argv[3] =='savenc':
     import os
 
-    fname = 'Kenya_ODA_v31_AGBpot_%s_WC2_SOILGRIDS_GridSearch.nc' % lvl
+    fname = '%s_v%s_AGBpot_%s_WC2_SOILGRIDS_GridSearch.nc' % (country_code,version_number,lvl)
 
-    if fname in os.listdir(path+'/../output/'):
-        os.remove(path+'/../output/'+fname)
+    if fname in os.listdir(output_dir):
+        os.remove(output_dir+fname)
 
 
-    nc = Dataset(path+'/../output/'+fname,'w')
+    nc = Dataset(output_dir+fname,'w')
 
     nc.createDimension('lon',size=lon.size)
     nc.createDimension('lat',size=lat.size)
@@ -332,14 +353,14 @@ if sys.argv[3] =='savenc':
     nc.createVariable('AGB_%s' % lvl,'d',dimensions=('lat','lon'), zlib = True)
     nc.variables['AGB_%s' % lvl][:] = agbmap
     nc.variables['AGB_%s' % lvl].missing_value = -9999.
-    nc.variables['AGB_%s' % lvl].long_name = 'Forest AGB_%s ODA map v31 regridded to 30arcsec' % lvl
+    nc.variables['AGB_%s' % lvl].long_name = 'Avitabile et al pantropical AGB_%s map v31 regridded to 30arcsec' % lvl
     nc.variables['AGB_%s' % lvl].units = 'Mg ha-1'
 
     nc.createVariable('AGBpot_%s' % lvl,'d',dimensions=('lat','lon'), zlib = True)
     nc.variables['AGBpot_%s' % lvl][:] = potmap.data
     nc.variables['AGBpot_%s' % lvl].missing_value = -9999.
     nc.variables['AGBpot_%s' % lvl].units = 'Mg ha-1'
-    nc.variables['AGBpot_%s' % lvl].long_name = "AGBpot_%s constructed using Kenya's ODA forest AGB_%s map v31" % (lvl,lvl)
+    nc.variables['AGBpot_%s' % lvl].long_name = "AGBpot_%s constructed using Avitabile pantropical AGB_%s map v31 (Avitabile et al., GCB, 2016)" % (lvl,lvl)
 
     #nc.createVariable('forestfraction','d',dimensions=('lat','lon'), zlib = True)
     #nc.variables['forestfraction'][:] = fraction
