@@ -116,7 +116,7 @@ def plot_OLS(ax,target,Y,mode='unicolor'):
 
 country_code = 'INDO'
 path = '/disk/scratch/local.2/dmilodow/PotentialBiomass/processed/%s/' % country_code
-version_number = '001'
+version_number = '002'
 
 calval_dir = '/home/dmilodow/DataStore_DTM/FOREST2020/PotentialBiomassV2/calval/'
 if 'v%s' % version_number in os.listdir('%s/' % calval_dir):
@@ -158,10 +158,11 @@ lc2015file  = gdal.Open('%s/esacci/ESACCI-LC-L4-LCCS-Map-P1Y-2015-v2.0.7-1km-mod
 lc1992  = lc1992file.GetRasterBand(1).ReadAsArray()
 bare1992= (lc1992>=200)*(lc1992<=202)
 frst1992= (lc1992>=50)*(lc1992<=90) # included code 90: mixed tree as forest - JFE 10/09/18
+frst1992+=(lc1992>=160)*(lc1992<=170)
 lc2015  = lc2015file.GetRasterBand(1).ReadAsArray()
 bare2015= (lc2015>=200)*(lc2015<=202)
 frst2015= (lc2015>=50)*(lc2015<=90)
-
+frst2015+=(lc2015>=160)*(lc2015<=170)
 """
 # version incorporating country masks
 #final masks
@@ -176,7 +177,25 @@ print("forest from 1992 to 2015", (frst*kenya).sum()/kenya.sum() )
 bare = bare1992*bare2015
 frst = frst1992*frst2015
 
-#get  climate data mask
+# Now load auxilliary forest data from IFL and the Margono map (primary forest for Indonesia)
+ifl_file = gdal.Open('%s/forestcover/IFL_2013_%s.tif' % (path,country_code))
+pf_file = gdal.Open('%s/forestcover/margono_indonesia_forestcover_and_loss.tif' % path)
+
+pf = pf_file.GetRasterBand(1).ReadAsArray()
+pif = (pf==2)+(pf==6)+(pf==9) # primary intact forest in 2010
+#pif = (pf==2)+(pf==5)+(pf==6)+(pf==8)+(pf==9)+(pf==15) # primary intact forest in 2005
+#pif = (pf==2)+(pf==4)+(pf==5)+(pf==6)+(pf==7)+(pf==8)+(pf==9)+(pf==13)+(pf==14)+(pf==15)# primary intact forest in 2000
+
+ifl=ifl_file.GetRasterBand(1).ReadAsArray()
+ifl[pf>0]=0 # remove area mapped by margono from IFL extent
+ifl[ifl>0]=1
+
+# merge primary intact forest data
+pif=pif+ifl
+# cross correlate with ESA-CCI data, keeping only continously forested pixels in both data streams
+frst=pif*frst
+
+#get climate data mask
 wc2files = glob.glob(path+'/wc2/wc2*tif');wc2files.sort()
 wc2subset = []
 wc2vars = []
@@ -211,8 +230,8 @@ lon2d,lat2d = np.meshgrid(lon,lat)
 
 #set target
 target = np.zeros(frst.shape)-9999.
-target[frst] = agbdata[frst]
-target[bare] = 0.
+target[frst==True] = agbdata[frst==True]
+target[bare==True] = 0.
 target[target==65535] = -9999.
 target = np.ma.masked_equal(target,-9999.)
 
@@ -257,8 +276,10 @@ if sys.argv[2] == 'new':
     X_train, X_test, y_train, y_test = train_test_split(X,y,random_state=26)
 
     param_grid = {"max_features": ['auto','sqrt','log2'],
-          "min_samples_leaf": np.arange(20,60,10),
-          "n_estimators": [100,200,500,1000]}
+          "min_samples_leaf": np.arange(20,60,20),
+          "n_estimators": [200,500,1000]}
+          #"min_samples_leaf": np.arange(20,60,10),
+          #"n_estimators": [100,200,500,1000]}
 
     grid = GridSearchCV(forest,param_grid=param_grid,cv=3,verbose = True,\
     scoring = 'neg_mean_squared_error')
@@ -277,7 +298,7 @@ if sys.argv[2] == 'new':
     fig.axes[0].set_title('Calibration')
     fig.axes[1].set_title('Validation')
     #fig.show()
-    fig.savefig('%s/v%s/calval_%s_v31_%s_WC2_SOILGRIDS_GridSearch.png' % (calval_dir,country_code,version_number,lvl),bbox_inches='tight')
+    fig.savefig('%s/v%s/calval_%s_v%s_%s_WC2_SOILGRIDS_GridSearch.png' % (calval_dir,version_number,country_code,version_number,lvl),bbox_inches='tight')
 
     #now fit final forest on all dataset
     forest.fit(X,y)
@@ -288,14 +309,14 @@ if sys.argv[2] == 'new':
 elif sys.argv[2] == 'load':
 
     print('Loading existing application')
-    forest = joblib.load('%s/saved_algorithms/%s_v%s_AGBpot_%s_WC2_SOILGRIDS.pkl' % (alg_dir,country_code,version_number,lvl))
+    forest = joblib.load('%s/%s_v%s_AGBpot_%s_WC2_SOILGRIDS.pkl' % (alg_dir,country_code,version_number,lvl))
 
 print(forest.score(X,y),np.sqrt(mean_squared_error(y,forest.predict(X))))
 print("AGB in training data: %4.2f Pg" % ((target*areas).sum()*1e-13))
 
 #create new map of potential forest biomass
 X_pred = predict
-potmap = np.zeros(kenya.shape)-9999.
+potmap = np.zeros(frst.shape)-9999.
 potmap[slcpred] = forest.predict(X_pred)
 print("AGB in trained model: %4.2f Pg" % ((np.ma.masked_equal(potmap,-9999)*areas)[slc].sum()*1e-13))
 
@@ -369,8 +390,8 @@ if sys.argv[3] =='savenc':
     #nc.variables['forestfraction'].long_name = 'fraction of pixel currently forested'
 
     nc.createVariable('training','d',dimensions=('lat','lon'), zlib = True)
-    train = np.zeros(kenya.shape,dtype='i')-9999.
-    train[kenya] = 0.
+    train = np.zeros(frst.shape,dtype='i')-9999.
+    train[wc2mask] = 0.
     train[bare] = 1.
     train[frst] = 2.
     nc.variables['training'][:] = train

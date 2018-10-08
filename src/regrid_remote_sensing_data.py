@@ -7,6 +7,8 @@ regrid data sets
 - regridding modes are as follows:
   - AGB (Avitabile) - nearest neighbour
   - ESA CCI landcover - mode
+  - Primary forest maps (Morgano et al.) - optional
+  - Intact forest landscapes (Popatov et al.) - optional
   - SOILGRIDS - nearest neighbour
 - the extent is specified based on the bounding box (lat long limits)
 - if required a mask is generated to clip the output to the specified national boundaries
@@ -27,8 +29,8 @@ import glob
 # Bounding Box
 W = 92.
 E = 154.
-N = 8.
-S = -12.
+N = 11.
+S = -21.
 
 # create some directories to host the processed data_io
 prefix = 'INDO'
@@ -39,6 +41,7 @@ os.system('mkdir %s%s/wc2' % (outdir,prefix))
 os.system('mkdir %s%s/agb' % (outdir,prefix))
 os.system('mkdir %s%s/esacci' % (outdir,prefix))
 os.system('mkdir %s%s/soilgrids' % (outdir,prefix))
+os.system('mkdir %s%s/forestcover' % (outdir,prefix))
 
 
 # Start with the worldclim2 data. This should be straightforward using gdal as are just clipping
@@ -83,3 +86,11 @@ for ff,fname in enumerate(lcfiles):
     os.system("gdalwarp -overwrite -te %f %f %f %f -tr 0.008333333333333 -0.008333333333333 -r mode -of GTIFF NETCDF:%s:lccs_class %s%s/esacci/%s-%s.tif" % (W,S,E,N,lcfiles[ff],outdir,prefix,outfname,prefix))
     outfname = fname.split('/')[-1][:22]+fname.split('/')[-1][27:42]+"-1km-mode-change-count"
     os.system("gdalwarp -overwrite -te %f %f %f %f -tr 0.008333333333333 -0.008333333333333 -r mode -of GTIFF NETCDF:%s:change_count %s%s/esacci/%s-%s.tif" % (W,S,E,N,lcfiles[ff],outdir,prefix,outfname,prefix))
+
+# Primary forest cover and loss (Margono et al.)
+f_file = '/home/dmilodow/DataStore_DTM/FOREST2020/PartnerCountries/Indonesia/ForestCover/Primary_and_intact_forest_and_loss/change/margono_indonesia_forestcover_and_loss_1km.tif'
+os.system("gdalwarp -overwrite -te %f %f %f %f -tr 0.008333333333333 -0.008333333333333 -r mode -of GTIFF %s %s%s/forestcover/margono_indonesia_forestcover_and_loss.tif" % (W,S,E,N,f_file,outdir,prefix))
+
+# INtact forest landscapes (Potapov et al.)
+ifl_file = '/disk/scratch/local.2/landcover_maps/IFL_2013/IFL_2013.tif'
+os.system("gdalwarp -overwrite -te %f %f %f %f -tr 0.008333333333333 -0.008333333333333 -r mode -of GTIFF %s %s%s/forestcover/IFL_2013_%s.tif" % (W,S,E,N,ifl_file,outdir,prefix,prefix))
